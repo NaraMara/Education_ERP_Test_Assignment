@@ -26,12 +26,14 @@ namespace FilmsCatalog.Controllers
         // GET: Films
         public async Task<IActionResult> Index()
         {
-            return View(await _context.Films.ToListAsync());
+            var data = await _context.Films.Include(p => p.Creator).ToListAsync();
+            return View(data) ;
         }
 
         // GET: Films/Details/5
         public async Task<IActionResult> Details(Guid? id)
         {
+
             if (id == null)
             {
                 return NotFound();
@@ -82,7 +84,7 @@ namespace FilmsCatalog.Controllers
             };
              _context.Films.Add(film);
             await this._context.SaveChangesAsync();
-            return RedirectToAction("Index", "Home");
+            return RedirectToAction("Index");
 
         }
 
@@ -94,13 +96,20 @@ namespace FilmsCatalog.Controllers
                 return NotFound();
             }
 
-            var film = await _context.Films.FindAsync(id);
+            var film = await _context.Films.SingleOrDefaultAsync(f => f.Id == id);
             if (film == null)
             {
                 return NotFound();
             }
-            ViewData["CreatorId"] = new SelectList(_context.Users, "Id", "Id", film.CreatorId);
-            return View(film);
+            var model = new FilmViewModel
+            {
+                Name=film.Name,
+                Description=film.Description,
+                DirectorName=film.DirectorName,
+                RealeaseDate=film.RealeaseDate
+            };
+            ViewData["CreatorId"] =  film.CreatorId; 
+            return View(model);
         }
 
         // POST: Films/Edit/5

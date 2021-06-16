@@ -1,31 +1,30 @@
-﻿@model IEnumerable<FilmsCatalog.Models.Film>
-
+﻿@model StaticPagedList<FilmsCatalog.Models.Film>
+@inject FilmsCatalog.Services.IUserPermissionsService UserPermissionsService
 @{
     ViewData["Title"] = "Home Page";
 }
-
-<a type="button" asp-area="" asp-action="Create" class="btn btn-dark mb-3">Добавить фильм</a>
-
-
-
+@using X.PagedList;
+@using X.PagedList.Mvc.Core
+@using X.PagedList.Mvc.Bootstrap4.Core
+<a type="button" asp-area="" asp-action="Create" class="btn btn-primary mb-3">Добавить фильм</a>
 
 <table class="table">
     <thead>
         <tr>
             <th>
-                @Html.DisplayNameFor(model => model.Creator)
+                @Html.DisplayNameFor(model => model[0].Creator)
             </th>
             <th>
-                @Html.DisplayNameFor(model => model.Name)
+                @Html.DisplayNameFor(model => model[0].Name)
             </th>
             <th>
-                @Html.DisplayNameFor(model => model.Description)
+                @Html.DisplayNameFor(model => model[0].Description)
             </th>
             <th>
-                @Html.DisplayNameFor(model => model.RealeaseDate)
+                @Html.DisplayNameFor(model => model[0].RealeaseDate)
             </th>
             <th>
-                @Html.DisplayNameFor(model => model.DirectorName)
+                @Html.DisplayNameFor(model => model[0].DirectorName)
             </th>
             <th></th>
         </tr>
@@ -50,11 +49,24 @@
                     @Html.DisplayFor(modelItem => item.DirectorName)
                 </td>
                 <td>
-                    <a asp-action="Edit" asp-route-id="@item.Id">Edit</a> |
-                    <a asp-action="Details" asp-route-id="@item.Id">Details</a> |
-                    <a asp-action="Delete" asp-route-id="@item.Id">Delete</a>
+                    @if (UserPermissionsService.CanEditFilm(item))
+                    {
+                        <span><a asp-action="Edit" asp-route-id="@item.Id">Edit</a> |</span>
+                        <span><a asp-action="Details" asp-route-id="@item.Id">Details</a> |</span>
+                        <span><a asp-action="Delete" asp-route-id="@item.Id">Delete</a></span>
+                    }
+                    else
+                    {
+                        <a asp-action="Details" asp-route-id="@item.Id">Details</a>
+                    }
                 </td>
             </tr>
         }
     </tbody>
 </table>
+
+@Html.PagedListPager(Model, page => Url.Action("Index", new { page }), Bootstrap4PagedListRenderOptions.Classic)
+
+
+
+

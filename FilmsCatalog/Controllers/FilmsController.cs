@@ -8,29 +8,54 @@ using Microsoft.EntityFrameworkCore;
 using FilmsCatalog.Data;
 using FilmsCatalog.Models;
 using Microsoft.AspNetCore.Identity;
-
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging;
+using X.PagedList;
+using X.PagedList.Mvc;
 namespace FilmsCatalog.Controllers
 {
+    [Authorize]
     public class FilmsController : Controller
     {
         private readonly ApplicationDbContext _context;
-        private readonly UserManager<User> userManager;
+        private readonly UserManager<User> _userManager;
+        private readonly ILogger<FilmsController> _logger;
 
-        public FilmsController(ApplicationDbContext context, UserManager<User> userManager)
+
+        public FilmsController(ApplicationDbContext context, UserManager<User> userManager, ILogger<FilmsController> logger)
         {
-            _context = context;
-            this.userManager = userManager;
+            this._context = context;
+            this._userManager = userManager;
+            this._logger = logger;
 
         }
 
         // GET: Films
-        public async Task<IActionResult> Index()
+        [AllowAnonymous]
+        public async Task<IActionResult> Index(int? page)
         {
-            var data = await _context.Films.Include(p => p.Creator).ToListAsync();
-            return View(data) ;
+            /*
+             var pageNumber = page ?? 1;
+            var data =  await  _context.Films.Include(p => p.Creator).ToListAsync();
+            var onePage = data.ToPagedList(pageNumber, 5);
+            return View(onePage) ;
+            */
+            var pageNumber = page ?? 1;
+            var pageSize = 5;
+            var itemsToSkip = (pageNumber - 1) * pageSize;
+
+            var data =  await  _context.Films.Skip(itemsToSkip).Take(pageSize).Include(p => p.Creator).ToListAsync();
+            var filmsCount = _context.Films.Count();
+            var onePage = new StaticPagedList<Film>(data, pageNumber, pageSize, filmsCount);
+                //data.ToPagedList(pageNumber, pageSize);
+
+            
+
+            return View(onePage) ;
         }
 
         // GET: Films/Details/5
+        [AllowAnonymous]
         public async Task<IActionResult> Details(Guid? id)
         {
 
@@ -67,7 +92,7 @@ namespace FilmsCatalog.Controllers
             {
                 return this.View();
             }
-            var user = await this.userManager.GetUserAsync(this.HttpContext.User);
+            var user = await this._userManager.GetUserAsync(this.HttpContext.User);
             if (user==null)
             {
                 this.ModelState.AddModelError("UserError", "smth went wrong, please try to reauthenticate");
@@ -82,8 +107,12 @@ namespace FilmsCatalog.Controllers
                 DirectorName=model.DirectorName,
                 CreatorId=user.Id
             };
+
              _context.Films.Add(film);
             await this._context.SaveChangesAsync();
+            _logger.LogInformation("new film has been successfully created");
+
+
             return RedirectToAction("Index");
 
         }
@@ -117,35 +146,42 @@ namespace FilmsCatalog.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(Guid id, [Bind("Id,CreatorId,Name,Description,RealeaseDate,DirectorName")] Film film)
+        public async Task<IActionResult> Edit(Guid? id, FilmViewModel model)
         {
-            if (id != film.Id)
+            if (!this.ModelState.IsValid)
+            {
+                return this.View(model);
+            }
+
+            if (id == null)
+            {
+                return NotFound();
+            }
+            var film = _context.Films
+                .SingleOrDefault(f => f.Id == id);
+
+            if (film == null)
             {
                 return NotFound();
             }
 
-            if (ModelState.IsValid)
+            film.Name = model.Name;
+            film.Description = model.Description;
+            film.DirectorName = model.DirectorName;
+            film.RealeaseDate = model.RealeaseDate;
+
+
+            try
             {
-                try
-                {
-                    _context.Update(film);
-                    await _context.SaveChangesAsync();
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    if (!FilmExists(film.Id))
-                    {
-                        return NotFound();
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
-                return RedirectToAction(nameof(Index));
+                await _context.SaveChangesAsync();
             }
-            ViewData["CreatorId"] = new SelectList(_context.Users, "Id", "Id", film.CreatorId);
-            return View(film);
+            catch (DbUpdateConcurrencyException)
+            {
+                _logger.LogError("Unable to update film data ");
+
+            }
+            _logger.LogInformation("film data has been successfuly updated");
+            return RedirectToAction("Details",new { id });
         }
 
         // GET: Films/Delete/5

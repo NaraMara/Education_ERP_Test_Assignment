@@ -41,11 +41,21 @@
             @Html.DisplayFor(model => model.DirectorName)
         </dd>
         <dt class="col-sm-2">
-            @Html.DisplayNameFor(model => model.FileName)
+            Poster
         </dt>
+        @if (Model.FilePath==null)
+        {
+        <dd class="col-sm-10">
+            No Poster
+        </dd>
+        }
+        else
+        {
         <dd class="col-sm-10">
             <img src="@Model.FilePath" height="500" alt="@Model.FileName" />
         </dd>
+        }
+        
 
     </dl>
 </div>

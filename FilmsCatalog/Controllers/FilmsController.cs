@@ -15,6 +15,7 @@ using X.PagedList.Mvc;
 using System.IO;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
+using FilmsCatalog.Services;
 
 namespace FilmsCatalog.Controllers
 {
@@ -26,14 +27,17 @@ namespace FilmsCatalog.Controllers
         private readonly UserManager<User> _userManager;
         private readonly ILogger<FilmsController> _logger;
         private readonly IWebHostEnvironment _webHostingEnvironment;
+        private readonly IUserPermissionsService _userPermissionsService;
 
 
-        public FilmsController(ApplicationDbContext context, UserManager<User> userManager, ILogger<FilmsController> logger, IWebHostEnvironment webHostingEnvironment)
+
+        public FilmsController(ApplicationDbContext context, UserManager<User> userManager, ILogger<FilmsController> logger, IWebHostEnvironment webHostingEnvironment, IUserPermissionsService userPermissionsService)
         {
             this._context = context;
             this._userManager = userManager;
             this._logger = logger;
             this._webHostingEnvironment = webHostingEnvironment;
+            this._userPermissionsService = userPermissionsService;
 
         }
 
@@ -41,24 +45,14 @@ namespace FilmsCatalog.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> Index(int? page)
         {
-            /*
-             var pageNumber = page ?? 1;
-            var data =  await  _context.Films.Include(p => p.Creator).ToListAsync();
-            var onePage = data.ToPagedList(pageNumber, 5);
-            return View(onePage) ;
-            */
+           
             var pageNumber = page ?? 1;
             var pageSize = 5;
             var itemsToSkip = (pageNumber - 1) * pageSize;
 
             var data =  await  _context.Films.Skip(itemsToSkip).Take(pageSize).Include(p => p.Creator).ToListAsync();
             var filmsCount = _context.Films.Count();
-            var onePage = new StaticPagedList<Film>(data, pageNumber, pageSize, filmsCount);
-                //data.ToPagedList(pageNumber, pageSize);
-
-            
-
-            return View(onePage) ;
+            return View(new StaticPagedList<Film>(data, pageNumber, pageSize, filmsCount)) ;
         }
 
         // GET: Films/Details/5
@@ -148,11 +142,17 @@ namespace FilmsCatalog.Controllers
             {
                 return NotFound();
             }
-
+            
             var film = await _context.Films.SingleOrDefaultAsync(f => f.Id == id);
             if (film == null)
             {
                 return NotFound();
+            }
+            if (!_userPermissionsService.CanEditFilm(film))
+            {
+                this.ModelState.AddModelError("User", "You are prohibited from editing this file ");
+                return RedirectToAction("Index");
+
             }
             var model = new FilmViewModel
             {
@@ -188,7 +188,12 @@ namespace FilmsCatalog.Controllers
             {
                 return NotFound();
             }
+            if (!_userPermissionsService.CanEditFilm(film))
+            {
+                this.ModelState.AddModelError("User", "You are prohibited from editing this file ");
+                return this.View(model);
 
+            }
 
             var fileName = Path.GetFileName(ContentDispositionHeaderValue.Parse(model.File.ContentDisposition).FileName.Trim('"'));
             var fileExt = Path.GetExtension(fileName);
@@ -217,8 +222,6 @@ namespace FilmsCatalog.Controllers
                     await model.File.CopyToAsync(fileStream);
                 }
             }
-            
-
 
             try
             {
@@ -228,7 +231,6 @@ namespace FilmsCatalog.Controllers
             {
                 _logger.LogError("Unable to update film data ");
                 return this.View(model);
-
             }
             _logger.LogInformation("film data has been successfuly updated");
             return RedirectToAction("Details",new { id });
@@ -248,6 +250,11 @@ namespace FilmsCatalog.Controllers
             if (film == null)
             {
                 return NotFound();
+            }
+            if (!_userPermissionsService.CanEditFilm(film))
+            {
+                this.ModelState.AddModelError("User", "You are prohibited from editing this file ");
+                return RedirectToAction("Index");
             }
 
             return View(film);
@@ -269,6 +276,11 @@ namespace FilmsCatalog.Controllers
             if (film == null)
             {
                 return NotFound();
+            }
+            if (!_userPermissionsService.CanEditFilm(film))
+            {
+                this.ModelState.AddModelError("User", "You are prohibited from editing this file ");
+                return RedirectToAction("Index");
             }
 
             var filePath = Path.Combine(this._webHostingEnvironment.WebRootPath, "filmPics", film.Id.ToString("N") + Path.GetExtension(film.FilePath));

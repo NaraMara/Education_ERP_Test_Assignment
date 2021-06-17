@@ -9,12 +9,14 @@ namespace FilmsCatalog.Models
 {
     public class FilmViewModel
     {
-        [Required(ErrorMessage = "Обязательное поле")]
+        [Required(ErrorMessage = "Name is required")]
         public string Name { get; set; }
         public string Description { get; set; }
         public DateTime RealeaseDate { get; set; }
         public string DirectorName { get; set; }
         [DataType(DataType.Upload)]
+        [Display(Name = "Poster*")]
+
         public IFormFile File { get; set; }
 
 

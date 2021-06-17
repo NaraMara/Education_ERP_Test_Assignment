@@ -12,21 +12,28 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 using X.PagedList;
 using X.PagedList.Mvc;
+using System.IO;
+using System.Net.Http.Headers;
+using Microsoft.AspNetCore.Hosting;
+
 namespace FilmsCatalog.Controllers
 {
     [Authorize]
     public class FilmsController : Controller
     {
+        private static readonly HashSet<String> AllowedExtensions = new HashSet<String> { ".jpg", ".jpeg", ".png", ".gif" };
         private readonly ApplicationDbContext _context;
         private readonly UserManager<User> _userManager;
         private readonly ILogger<FilmsController> _logger;
+        private readonly IWebHostEnvironment _webHostingEnvironment;
 
 
-        public FilmsController(ApplicationDbContext context, UserManager<User> userManager, ILogger<FilmsController> logger)
+        public FilmsController(ApplicationDbContext context, UserManager<User> userManager, ILogger<FilmsController> logger, IWebHostEnvironment webHostingEnvironment)
         {
             this._context = context;
             this._userManager = userManager;
             this._logger = logger;
+            this._webHostingEnvironment = webHostingEnvironment;
 
         }
 
@@ -90,25 +97,42 @@ namespace FilmsCatalog.Controllers
         {
             if (!ModelState.IsValid)
             {
-                return this.View();
+                return this.View(model);
             }
             var user = await this._userManager.GetUserAsync(this.HttpContext.User);
             if (user==null)
             {
                 this.ModelState.AddModelError("UserError", "smth went wrong, please try to reauthenticate");
-                return this.View();
+                return this.View(model);
 
             }
+
+            var fileName = Path.GetFileName(ContentDispositionHeaderValue.Parse(model.File.ContentDisposition).FileName.Trim('"'));
+            var fileExt = Path.GetExtension(fileName);
+
+            if (!AllowedExtensions.Contains(fileExt))
+            {
+                this.ModelState.AddModelError(nameof(model.File), "This file type is prohibited");
+                return this.View(model);
+            }
+
             var film = new Film
             {
                 Name=model.Name,
                 Description=model.Description,
                 RealeaseDate=model.RealeaseDate,
                 DirectorName=model.DirectorName,
-                CreatorId=user.Id
+                CreatorId=user.Id,
+                FileName=fileName
             };
+            var filePath = Path.Combine(this._webHostingEnvironment.WebRootPath, "filmPics", film.Id.ToString("N") + fileExt);
+            film.FilePath = $"/filmPics/{film.Id:N}{fileExt}";
+            using (var fileStream = new FileStream(filePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+            {
+                await model.File.CopyToAsync(fileStream);
+            }
 
-             _context.Films.Add(film);
+            _context.Films.Add(film);
             await this._context.SaveChangesAsync();
             _logger.LogInformation("new film has been successfully created");
 
@@ -135,7 +159,7 @@ namespace FilmsCatalog.Controllers
                 Name=film.Name,
                 Description=film.Description,
                 DirectorName=film.DirectorName,
-                RealeaseDate=film.RealeaseDate
+                RealeaseDate=film.RealeaseDate               
             };
             ViewData["CreatorId"] =  film.CreatorId; 
             return View(model);
@@ -165,10 +189,35 @@ namespace FilmsCatalog.Controllers
                 return NotFound();
             }
 
+
+            var fileName = Path.GetFileName(ContentDispositionHeaderValue.Parse(model.File.ContentDisposition).FileName.Trim('"'));
+            var fileExt = Path.GetExtension(fileName);
+
+            if (!AllowedExtensions.Contains(fileExt))
+            {
+                this.ModelState.AddModelError(nameof(model.File), "This file type is prohibited");
+                return this.View(model);
+            }
+
             film.Name = model.Name;
             film.Description = model.Description;
             film.DirectorName = model.DirectorName;
             film.RealeaseDate = model.RealeaseDate;
+
+            if (model.File != null)
+            {
+                var filePath = Path.Combine(this._webHostingEnvironment.WebRootPath, "filmPics", film.Id.ToString("N") + Path.GetExtension(film.FilePath));
+                System.IO.File.Delete(filePath);
+
+
+                var newFilePath = Path.Combine(this._webHostingEnvironment.WebRootPath, "filmPics", film.Id.ToString("N") + fileExt);
+                film.FilePath = $"/filmPics/{film.Id:N}{fileExt}";
+                using (var fileStream = new FileStream(filePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                {
+                    await model.File.CopyToAsync(fileStream);
+                }
+            }
+            
 
 
             try
@@ -178,6 +227,7 @@ namespace FilmsCatalog.Controllers
             catch (DbUpdateConcurrencyException)
             {
                 _logger.LogError("Unable to update film data ");
+                return this.View(model);
 
             }
             _logger.LogInformation("film data has been successfuly updated");
@@ -206,11 +256,27 @@ namespace FilmsCatalog.Controllers
         // POST: Films/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(Guid id)
+        public async Task<IActionResult> DeleteConfirmed(Guid? id)
         {
-            var film = await _context.Films.FindAsync(id);
+
+            if (id == null)
+            {
+                return NotFound();
+            }
+            var film = _context.Films
+                .SingleOrDefault(f => f.Id == id);
+
+            if (film == null)
+            {
+                return NotFound();
+            }
+
+            var filePath = Path.Combine(this._webHostingEnvironment.WebRootPath, "filmPics", film.Id.ToString("N") + Path.GetExtension(film.FilePath));
+            System.IO.File.Delete(filePath);
             _context.Films.Remove(film);
             await _context.SaveChangesAsync();
+            _logger.LogInformation("film  has been successfuly deleted");
+
             return RedirectToAction(nameof(Index));
         }
 
